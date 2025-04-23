@@ -63,18 +63,17 @@ def compute_tf(doc_word_matrix, docs):
     return tf_matrix
 
 
-def compute_tfidf(tf, doc_word_matrix):
-    N = doc_word_matrix.shape[0]  # кількість документів
-
-    # DF — кількість документів, в яких зустрічається кожен термін
+def compute_idf(doc_word_matrix):
+    N = doc_word_matrix.shape[0]
     df = np.count_nonzero(doc_word_matrix > 0, axis=0)
+    idf = np.log(N / (df + 1))
+    return idf
 
-    # IDF
-    idf = np.log(N / (df + 1))  # додаємо 1, щоб уникнути ділення на 0
 
-    # TF-IDF
+def compute_tfidf(doc_word_matrix, docs):
+    tf = compute_tf(doc_word_matrix, docs)
+    idf = compute_idf(doc_word_matrix)
     tfidf = tf * idf
-
     return tfidf
 
 
@@ -97,5 +96,4 @@ doc_word_matrix = get_doc_word_matrix(all_terms, unique_terms)
 
 print(pd.DataFrame(get_term_term_freq_matrix(doc_word_matrix),
       index=unique_terms, columns=unique_terms))
-tf = compute_tf(doc_word_matrix, all_terms)
-print(pd.DataFrame(compute_tfidf(tf, doc_word_matrix)))
+print(pd.DataFrame(compute_tfidf(doc_word_matrix, all_terms)))
