@@ -96,6 +96,7 @@ def get_term_category_matrix(doc_word_df, doc_category_df):
     term_category_matrix = doc_word_df.T @ doc_category_df
     return term_category_matrix
 
+
 def compute_euclidean_distance(doc_word_matrix):
     num_docs = doc_word_matrix.shape[0]
     euclidean_dist = np.zeros((num_docs, num_docs))
@@ -180,7 +181,8 @@ def process_texts_from_folder(directory='./texts/'):
         doc_word_matrix, index=filenames, columns=unique_terms)
     term_term_df = pd.DataFrame(get_term_term_freq_matrix(doc_word_matrix),
                                 index=unique_terms, columns=unique_terms)
-    tf_df = pd.DataFrame(compute_tf(doc_word_matrix, all_terms), index=filenames, columns=unique_terms)
+    tf_df = pd.DataFrame(compute_tf(doc_word_matrix, all_terms),
+                         index=filenames, columns=unique_terms)
     tfidf_df = pd.DataFrame(compute_tfidf(doc_word_matrix, all_terms),
                             index=filenames, columns=unique_terms)
     doc_category_df = pd.DataFrame(
@@ -234,7 +236,7 @@ doc_word_display = doc_word_df.copy()
 doc_word_display.insert(0, "Document", doc_word_display.index)
 
 term_term_display = term_term_df.copy()
-term_term_display.insert(0, "Document", term_term_display.index)
+term_term_display.insert(0, "Term", term_term_display.index)
 
 tf_display = tf_df.round(3).copy()
 tf_display.insert(0, "Document", tf_display.index)
@@ -268,7 +270,8 @@ app.layout = html.Div([
     html.H3("Term-Term Frequency Matrix"),
     dash_table.DataTable(
         data=term_term_display.to_dict('records'),
-        columns=[{"name": col, "id": col} for col in term_term_display.columns],
+        columns=[{"name": col, "id": col}
+                 for col in term_term_display.columns],
         style_table={'overflowX': 'auto'},
         page_size=10
     ),
@@ -292,7 +295,8 @@ app.layout = html.Div([
     html.H3("Document-Category Matrix"),
     dash_table.DataTable(
         data=doc_category_display.to_dict('records'),
-        columns=[{"name": col, "id": col} for col in doc_category_display.columns],
+        columns=[{"name": col, "id": col}
+                 for col in doc_category_display.columns],
         style_table={'overflowX': 'auto'},
         page_size=10
     ),
@@ -308,7 +312,8 @@ app.layout = html.Div([
     html.H3("Euclidean Distance Matrix"),
     dash_table.DataTable(
         data=euclidean_display.to_dict('records'),
-        columns=[{"name": col, "id": col} for col in euclidean_display.columns],
+        columns=[{"name": col, "id": col}
+                 for col in euclidean_display.columns],
         style_table={'overflowX': 'auto'},
         page_size=10
     ),
