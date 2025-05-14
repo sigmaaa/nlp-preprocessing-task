@@ -18,6 +18,7 @@ except AttributeError:
 else:
     ssl._create_default_https_context = _create_unverified_https_context
 
+nltk.download('punkt_tab')
 nltk.download("punkt")
 nltk.download("wordnet")
 nltk.download("omw-1.4")
@@ -147,6 +148,48 @@ def compute_slf(term_category_matrix, doc_category_df):
     return SLF_t.fillna(0)
 
 
+def predict_category_naive_bayes(new_text, doc_word_df, doc_category_df):
+    """
+    Класичний наївний баєсівський класифікатор на основі частот термів у категоріях.
+    """
+    # 1. Отримання словника
+    vocab = list(doc_word_df.columns)
+
+    # 2. Обробка нового документа
+    tokens = nltk.word_tokenize(new_text)
+    clean = cleanup_text(tokens)
+    stemmed = stemming(clean)
+
+    # 3. Побудова частот вхідного документа
+    doc_vec = np.zeros(len(vocab), dtype=int)
+    vocab_index = {word: idx for idx, word in enumerate(vocab)}
+    for word in stemmed:
+        if word in vocab_index:
+            doc_vec[vocab_index[word]] += 1
+
+    # 4. Побудова терм-категорія матриці
+    term_category_matrix = get_term_category_matrix(
+        doc_word_df, doc_category_df)
+    term_category_matrix += 1  # псевдорахунок для уникнення нулів
+    prob_w_given_c = term_category_matrix.divide(
+        term_category_matrix.sum(axis=0), axis=1)
+
+    # 5. Логарифм апріорних ймовірностей P(c)
+    D = len(doc_category_df)
+    Dc = doc_category_df.sum(axis=0)
+    log_priors = np.log(Dc / D)
+
+    # 6. Обчислення log P(c) + ∑ n(w) * log P(w|c)
+    scores = {}
+    for category in doc_category_df.columns:
+        log_likelihoods = np.log(prob_w_given_c[category].values)
+        score = log_priors[category] + np.dot(doc_vec, log_likelihoods)
+        scores[category] = score
+
+    predicted_category = max(scores, key=scores.get)
+    return predicted_category, scores
+
+
 # ====== LOAD FILES FROM FOLDER =======
 
 
@@ -215,140 +258,132 @@ def apply_pca(matrix):
 
 
 app = Dash(__name__)
-app.title = "TF-IDF & Matrix Viewer"
-
-doc_word_df, term_term_df, tf_df, tfidf_df, doc_category_df, tf_slf_df, euclidean_dist_df, cosine_sim_df, filenames = process_texts_from_folder()
-euclidean_pca = apply_pca(euclidean_dist_df.values)
-cosine_pca = apply_pca(cosine_sim_df.values)
-
-euclidean_pca_df = pd.DataFrame(euclidean_pca, columns=["PCA1", "PCA2"])
-euclidean_pca_df["Document"] = filenames
-euclidean_pca_df["Category"] = [doc_category_df.loc[f, :].idxmax()
-                                for f in filenames]
-
-cosine_pca_df = pd.DataFrame(cosine_pca, columns=["PCA1", "PCA2"])
-cosine_pca_df["Document"] = filenames
-cosine_pca_df["Category"] = [doc_category_df.loc[f, :].idxmax()
-                             for f in filenames]
-print(cosine_pca_df)
-
-doc_word_display = doc_word_df.copy()
-doc_word_display.insert(0, "Document", doc_word_display.index)
-
-term_term_display = term_term_df.copy()
-term_term_display.insert(0, "Term", term_term_display.index)
-
-tf_display = tf_df.round(3).copy()
-tf_display.insert(0, "Document", tf_display.index)
-
-tfidf_display = tfidf_df.round(3).copy()
-tfidf_display.insert(0, "Document", tfidf_display.index)
-
-doc_category_display = doc_category_df.copy()
-doc_category_display.insert(0, "Document", doc_category_display.index)
-
-tf_slf_display = tf_slf_df.round(3).copy()
-tf_slf_display.insert(0, "Document", tf_slf_display.index)
-
-euclidean_display = euclidean_dist_df.round(3).copy()
-euclidean_display.insert(0, "Document", euclidean_display.index)
-
-cosine_display = cosine_sim_df.round(3).copy()
-cosine_display.insert(0, "Document", cosine_display.index)
 
 app.layout = html.Div([
     html.H1("Text Matrix Visualizer"),
 
-    html.H3("Document-Word Matrix"),
-    dash_table.DataTable(
-        data=doc_word_display.to_dict('records'),
-        columns=[{"name": col, "id": col} for col in doc_word_display.columns],
-        style_table={'overflowX': 'auto'},
-        page_size=10
+    html.Label("Select Dataset Folder:"),
+    dcc.Dropdown(
+        id="folder-dropdown",
+        options=[
+            {"label": "Dataset A", "value": "texts"},
+            {"label": "Dataset B", "value": "texts_2"},
+        ],
+        value="texts"
     ),
 
-    html.H3("Term-Term Frequency Matrix"),
-    dash_table.DataTable(
-        data=term_term_display.to_dict('records'),
-        columns=[{"name": col, "id": col}
-                 for col in term_term_display.columns],
-        style_table={'overflowX': 'auto'},
-        page_size=10
-    ),
-
-    html.H3("TF Matrix"),
-    dash_table.DataTable(
-        data=tf_display.to_dict('records'),
-        columns=[{"name": col, "id": col} for col in tf_display.columns],
-        style_table={'overflowX': 'auto'},
-        page_size=10
-    ),
-
-    html.H3("TF-IDF Matrix"),
-    dash_table.DataTable(
-        data=tfidf_display.to_dict('records'),
-        columns=[{"name": col, "id": col} for col in tfidf_display.columns],
-        style_table={'overflowX': 'auto'},
-        page_size=10
-    ),
-
-    html.H3("Document-Category Matrix"),
-    dash_table.DataTable(
-        data=doc_category_display.to_dict('records'),
-        columns=[{"name": col, "id": col}
-                 for col in doc_category_display.columns],
-        style_table={'overflowX': 'auto'},
-        page_size=10
-    ),
-
-    html.H3("TF-SLF Matrix"),
-    dash_table.DataTable(
-        data=tf_slf_display.to_dict('records'),
-        columns=[{"name": col, "id": col} for col in tf_slf_display.columns],
-        style_table={'overflowX': 'auto'},
-        page_size=10
-    ),
-
-    html.H3("Euclidean Distance Matrix"),
-    dash_table.DataTable(
-        data=euclidean_display.to_dict('records'),
-        columns=[{"name": col, "id": col}
-                 for col in euclidean_display.columns],
-        style_table={'overflowX': 'auto'},
-        page_size=10
-    ),
-
-    html.H3("Cosine Similarity Matrix"),
-    dash_table.DataTable(
-        data=cosine_display.to_dict('records'),
-        columns=[{"name": col, "id": col} for col in cosine_display.columns],
-        style_table={'overflowX': 'auto'},
-        page_size=10
-    ),
-
-    html.H3("PCA Projection of Euclidean Distances"),
-    dcc.Graph(
-        figure=px.scatter(
-            euclidean_pca_df,
-            x="PCA1",
-            y="PCA2",
-            color="Category",
-            hover_data=["Document"],
-            title="Euclidean Similarity PCA"
-        )
-    ),
-
-    html.H3("PCA Projection of Cosine Similarities"),
-    dcc.Graph(
-        figure=px.scatter(
-            cosine_pca_df,
-            x="PCA1",
-            y="PCA2",
-            color="Category",
-            hover_data=["Document"],
-            title="Cosine Similarity PCA"
-        )
-    ),
+    html.Div(id="output-container")
 ])
+
+
+@app.callback(
+    Output("output-container", "children"),
+    Input("folder-dropdown", "value")
+)
+def update_output(selected_folder):
+    # Your function should take the parameter:
+    doc_word_df, term_term_df, tf_df, tfidf_df, doc_category_df, tf_slf_df, \
+        euclidean_dist_df, cosine_sim_df, filenames = process_texts_from_folder(
+            selected_folder)
+
+    test_texts = [
+        "doctors prescribed medicines in hospitals and nurses provided therapies",
+        "doctors diagnosed conditions in hospitals and provided medicine to patients",
+        "The government has announced a new policy aimed at reducing taxes for small businesses",
+    ]
+    cat_scores_dfs = []
+    predicted_categories = []
+    for text in test_texts:
+        pred_cat, cat_scores = predict_category_naive_bayes(
+            text, doc_word_df, doc_category_df)
+        cat_scores_dfs.append(pd.DataFrame(
+            list(cat_scores.items()), columns=['Category', 'Score']))
+        predicted_categories.append(pred_cat)
+
+    print("Predicted category:", pred_cat)
+    print("Scores:", cat_scores)
+
+    euclidean_pca = apply_pca(euclidean_dist_df.values)
+    cosine_pca = apply_pca(cosine_sim_df.values)
+
+    euclidean_pca_df = pd.DataFrame(euclidean_pca, columns=["PCA1", "PCA2"])
+    euclidean_pca_df["Document"] = filenames
+    euclidean_pca_df["Category"] = [doc_category_df.loc[f].idxmax()
+                                    for f in filenames]
+
+    cosine_pca_df = pd.DataFrame(cosine_pca, columns=["PCA1", "PCA2"])
+    cosine_pca_df["Document"] = filenames
+    cosine_pca_df["Category"] = [doc_category_df.loc[f].idxmax()
+                                 for f in filenames]
+
+    def make_table(title, df, index_name):
+        df_display = df.copy()
+        df_display.insert(0, index_name, df_display.index)
+        return html.Div([
+            html.H3(title),
+            dash_table.DataTable(
+                data=df_display.to_dict("records"),
+                columns=[{"name": i, "id": i} for i in df_display.columns],
+                style_table={"overflowX": "auto"},
+                page_size=10
+            )
+        ])
+
+    def showBayesPredictionResult(test_text, predicted_category, cat_scores_df):
+        return html.Div([
+            html.Label(f"Tested text: {test_text}"),
+            html.Hr(),
+            html.Label(f"Predicted category: {predicted_category}"),
+            dash_table.DataTable(
+                data=cat_scores_df.to_dict('records')
+            )
+        ])
+
+    # Generate results for Bayes predictions
+    bayes_results = [
+        showBayesPredictionResult(
+            test_texts[i], predicted_categories[i], cat_scores_dfs[i])
+        for i in range(len(test_texts))
+    ]
+
+    return [
+        *bayes_results,
+        make_table("Document-Word Matrix", doc_word_df, "Document"),
+        make_table("Term-Term Matrix", term_term_df, "Term"),
+        make_table("TF Matrix", tf_df.round(3), "Document"),
+        make_table("TF-IDF Matrix", tfidf_df.round(3), "Document"),
+        make_table("Document-Category Matrix", doc_category_df, "Document"),
+        make_table("TF-SLF Matrix", tf_slf_df.round(3), "Document"),
+        make_table("Euclidean Distance Matrix",
+                   euclidean_dist_df.round(3), "Document"),
+        make_table("Cosine Similarity Matrix",
+                   cosine_sim_df.round(3), "Document"),
+
+        html.H3("PCA Projection of Euclidean Distances"),
+        dcc.Graph(
+            figure=px.scatter(
+                euclidean_pca_df,
+                x="PCA1",
+                y="PCA2",
+                color="Category",
+                hover_data=["Document"],
+                title="Euclidean Similarity PCA"
+            )
+        ),
+
+        html.H3("PCA Projection of Cosine Similarities"),
+        dcc.Graph(
+            figure=px.scatter(
+                cosine_pca_df,
+                x="PCA1",
+                y="PCA2",
+                color="Category",
+                hover_data=["Document"],
+                title="Cosine Similarity PCA"
+            )
+        )
+    ]
+
+
 if __name__ == '__main__':
     app.run(debug=True)
