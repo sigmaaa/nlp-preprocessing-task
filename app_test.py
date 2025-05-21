@@ -149,37 +149,30 @@ def compute_slf(term_category_matrix, doc_category_df):
 
 
 def predict_category_naive_bayes(new_text, doc_word_df, doc_category_df):
-    """
-    Класичний наївний баєсівський класифікатор на основі частот термів у категоріях.
-    """
-    # 1. Отримання словника
     vocab = list(doc_word_df.columns)
 
-    # 2. Обробка нового документа
     tokens = nltk.word_tokenize(new_text)
     clean = cleanup_text(tokens)
     stemmed = stemming(clean)
 
-    # 3. Побудова частот вхідного документа
     doc_vec = np.zeros(len(vocab), dtype=int)
     vocab_index = {word: idx for idx, word in enumerate(vocab)}
     for word in stemmed:
         if word in vocab_index:
             doc_vec[vocab_index[word]] += 1
 
-    # 4. Побудова терм-категорія матриці
+    # Getting term-category matrix to build prob_w_given_c
     term_category_matrix = get_term_category_matrix(
         doc_word_df, doc_category_df)
-    term_category_matrix += 1  # псевдорахунок для уникнення нулів
+    term_category_matrix += 1  # pseudocount to avoid 0 division
     prob_w_given_c = term_category_matrix.divide(
         term_category_matrix.sum(axis=0), axis=1)
 
-    # 5. Логарифм апріорних ймовірностей P(c)
     D = len(doc_category_df)
     Dc = doc_category_df.sum(axis=0)
     log_priors = np.log(Dc / D)
 
-    # 6. Обчислення log P(c) + ∑ n(w) * log P(w|c)
+    # Calulating log P(c) +  ∑ n(w) * log P(w|c)
     scores = {}
     for category in doc_category_df.columns:
         log_likelihoods = np.log(prob_w_given_c[category].values)
@@ -191,8 +184,6 @@ def predict_category_naive_bayes(new_text, doc_word_df, doc_category_df):
 
 
 # ====== LOAD FILES FROM FOLDER =======
-
-
 def process_texts_from_folder(directory='./texts/'):
     all_terms = []
     filenames = []
@@ -254,6 +245,40 @@ def apply_pca(matrix):
     pca = PCA(n_components=2)
     return pca.fit_transform(matrix)
 
+
+def full_svd(matrix):
+    """
+    Decomposes a matrix A into U, Σ, V^T using full SVD.
+    A ≈ U @ Σ @ V.T
+    """
+    U, S, VT = np.linalg.svd(matrix, full_matrices=False)
+    return U, S, VT
+
+
+def reconstruct_matrix(U, S, VT, k, threshold=1e-10):
+    """
+    Reconstruct matrix using only top k components
+    Replace very small numbers with zero to avoid floating point errors.
+    """
+    S_k = np.diag(S[:k])
+    U_k = U[:, :k]
+    VT_k = VT[:k, :]
+
+    # Reconstruct the matrix
+    reconstructed = U_k @ S_k @ VT_k
+
+    # Replace values smaller than threshold with zero
+    reconstructed[np.abs(reconstructed) < threshold] = 0
+
+    return reconstructed
+
+
+def compute_svd_doc_word_df(doc_word_df, n_svd_components):
+    """Performs SVD and returns the reconstructed DataFrame."""
+    U, S, VT = full_svd(doc_word_df.values)
+    reduced_matrix = reconstruct_matrix(U, S, VT, n_svd_components)
+    # columns = [f"svd_{i}" for i in range(n_svd_components)]
+    return pd.DataFrame(reduced_matrix, index=doc_word_df.index, columns=doc_word_df.columns)
 # ====== DASH APP =======
 
 
@@ -271,6 +296,10 @@ app.layout = html.Div([
         ],
         value="texts"
     ),
+    dcc.Slider(0, 20, 1,
+               value=10,
+               id='svd-slider'
+               ),
 
     html.Div(id="output-container")
 ])
@@ -278,9 +307,10 @@ app.layout = html.Div([
 
 @app.callback(
     Output("output-container", "children"),
-    Input("folder-dropdown", "value")
+    Input("folder-dropdown", "value"),
+    Input("svd-slider", "value")
 )
-def update_output(selected_folder):
+def update_output(selected_folder, n_svd_components):
     # Your function should take the parameter:
     doc_word_df, term_term_df, tf_df, tfidf_df, doc_category_df, tf_slf_df, \
         euclidean_dist_df, cosine_sim_df, filenames = process_texts_from_folder(
@@ -300,8 +330,16 @@ def update_output(selected_folder):
             list(cat_scores.items()), columns=['Category', 'Score']))
         predicted_categories.append(pred_cat)
 
-    print("Predicted category:", pred_cat)
-    print("Scores:", cat_scores)
+    cat_scores_svd_dfs = []
+    predicted_categories_svd = []
+    svd_doc_word_df = compute_svd_doc_word_df(doc_word_df, n_svd_components)
+    # svd_doc_word_df = compute_svd_doc_word_df(doc_word_df, n_svd_components)
+    for text in test_texts:
+        pred_cat, cat_scores = predict_category_naive_bayes(
+            text, svd_doc_word_df, doc_category_df)
+        cat_scores_svd_dfs.append(pd.DataFrame(
+            list(cat_scores.items()), columns=['Category', 'Score']))
+        predicted_categories_svd.append(pred_cat)
 
     euclidean_pca = apply_pca(euclidean_dist_df.values)
     cosine_pca = apply_pca(cosine_sim_df.values)
@@ -346,9 +384,18 @@ def update_output(selected_folder):
         for i in range(len(test_texts))
     ]
 
+    bayes_results_svd = [
+        showBayesPredictionResult(
+            test_texts[i], predicted_categories_svd[i], cat_scores_svd_dfs[i])
+        for i in range(len(test_texts))
+    ]
+
     return [
         *bayes_results,
         make_table("Document-Word Matrix", doc_word_df, "Document"),
+        *bayes_results_svd,
+        make_table("Document-Word Matrix Reduced",
+                   svd_doc_word_df, "Document"),
         make_table("Term-Term Matrix", term_term_df, "Term"),
         make_table("TF Matrix", tf_df.round(3), "Document"),
         make_table("TF-IDF Matrix", tfidf_df.round(3), "Document"),
