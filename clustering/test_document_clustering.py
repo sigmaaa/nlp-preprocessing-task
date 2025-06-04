@@ -28,35 +28,33 @@ class TestDocumentClustering(unittest.TestCase):
 
     # === (a) K-Means ===
     def test_kmeans_euclidean(self):
-        labels = k_means_clustering(self.matrix, distance='euclidean', k=2)
+        labels = k_means_clustering(self.matrix, k=2)
         self.assertEqual(len(labels), self.matrix.shape[0])
 
     def test_kmeans_cosine(self):
-        labels = k_means_clustering(self.matrix, distance='cosine', k=2)
+        labels = k_means_clustering(self.matrix, k=2)
         self.assertEqual(len(labels), self.matrix.shape[0])
 
     # === (b) One-pass clustering ===
     def test_one_pass_single_linkage(self):
         dist = compute_euclidean_distance(self.matrix)
-        labels = one_pass_clustering(
-            self.matrix, dist, single_linkage, threshold=1.5)
+        labels = one_pass_clustering(dist, single_linkage, threshold=1.5)
         self.assertEqual(len(labels), self.matrix.shape[0])
 
     def test_one_pass_complete_linkage(self):
         dist = compute_cosine_similarity(self.matrix)
-        labels = one_pass_clustering(
-            self.matrix, dist, complete_linkage, threshold=1.0)
+        labels = one_pass_clustering(dist, complete_linkage, threshold=1.0)
         self.assertEqual(len(labels), self.matrix.shape[0])
 
     # === (c) Agglomerative clustering ===
     def test_agglomerative_single_euclidean(self):
         labels = agglomerative_clustering(
-            self.matrix, linkage_type='single', metric='euclidean', k=2)
+            self.matrix, linkage_type='single', k=2)
         self.assertEqual(len(labels), self.matrix.shape[0])
 
     def test_agglomerative_average_cosine(self):
         labels = agglomerative_clustering(
-            self.matrix, linkage_type='average', metric='cosine', k=2)
+            self.matrix, linkage_type='average', k=2)
         self.assertEqual(len(labels), self.matrix.shape[0])
 
 

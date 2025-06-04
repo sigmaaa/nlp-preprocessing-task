@@ -46,6 +46,10 @@ app.title = "TF-IDF & Matrix Viewer"
 available_folders = [d for d in os.listdir(
     "./") if os.path.isdir(d) and d.startswith("texts")]
 
+
+marks_eu = {round(i, 1): str(round(i, 1)) for i in np.arange(0.1, 5.1, 0.1)}
+marks_cos = {round(i, 2): str(round(i, 2)) for i in np.arange(0.0, 1.01, 0.1)}
+
 app.layout = html.Div([
     html.H1("Text Matrix Visualizer with Clustering"),
     html.Label("Select folder:"),
@@ -54,6 +58,12 @@ app.layout = html.Div([
         options=[{"label": name, "value": name} for name in available_folders],
         value=available_folders[0] if available_folders else None
     ),
+    html.Label("One-Pass Threshold (Euclidean):"),
+    dcc.Slider(id="threshold-slider-eu", min=0.1, max=5.0,
+               step=0.1, value=3.0),
+    html.Label("One-Pass Threshold (Cosine):"),
+    dcc.Slider(id="threshold-slider-cos", min=0.0, max=1.0,
+               step=0.05, value=0.9, marks=marks_cos),
     html.Div(id="output-container")
 ])
 
@@ -123,9 +133,11 @@ def apply_pca(matrix):
 
 @app.callback(
     Output("output-container", "children"),
-    Input("folder-dropdown", "value")
+    Input("folder-dropdown", "value"),
+    Input("threshold-slider-eu", "value"),
+    Input("threshold-slider-cos", "value")
 )
-def update_output(selected_folder):
+def update_output(selected_folder, threshold_eu, threshold_cos):
     doc_word_df, term_term_df, tf_df, tfidf_df, doc_category_df, tf_slf_df, \
         euclidean_dist_df, cosine_sim_df, kl_df, jaccard_df, filenames, doc_word_matrix = process_texts_from_folder(
             selected_folder)
@@ -150,7 +162,6 @@ def update_output(selected_folder):
         df["Cluster"] = [str(label) for label in labels]
         return dcc.Graph(figure=px.scatter(df, x="PCA1", y="PCA2", color="Cluster", hover_data=["Document"], title=title))
 
-    # PCA by category
     euclidean_pca = apply_pca(euclidean_dist_df.values)
     euclidean_pca_df = pd.DataFrame(euclidean_pca, columns=["PCA1", "PCA2"])
     euclidean_pca_df["Document"] = filenames
@@ -163,25 +174,18 @@ def update_output(selected_folder):
     cosine_pca_df["Category"] = [doc_category_df.loc[f, :].idxmax()
                                  for f in filenames]
 
-    # PCA before clustering
-    reduced_doc_word_matrix = apply_pca(doc_word_matrix)
-    reduced_doc_word_matrix_kmeans_eu_labels = k_means_clustering(
-        reduced_doc_word_matrix, distance="euclidean", k=3)
-
-    kmeans_eu_labels = k_means_clustering(
-        doc_word_matrix, distance="euclidean", k=3)
-    kmeans_cos_labels = k_means_clustering(
-        doc_word_matrix, distance="cosine", k=3)
+    kmeans_eu_labels = k_means_clustering(euclidean_dist_df.values, k=3)
+    kmeans_cos_labels = k_means_clustering(cosine_sim_df.values, k=3)
 
     onepass_eu_labels = one_pass_clustering(
-        doc_word_matrix, euclidean_dist_df.values, single_linkage, threshold=3)
+        euclidean_dist_df.values, single_linkage, threshold=threshold_eu)
     onepass_cos_labels = one_pass_clustering(
-        doc_word_matrix, cosine_sim_df.values, complete_linkage, threshold=0.9)
+        cosine_sim_df.values, complete_linkage, threshold=threshold_cos)
 
     agglom_eu_labels = agglomerative_clustering(
-        doc_word_matrix, metric='euclidean', linkage_type='single', k=3)
+        euclidean_dist_df.values, linkage_type='single', k=3)
     agglom_cos_labels = agglomerative_clustering(
-        doc_word_matrix, metric='cosine', linkage_type='average', k=3)
+        cosine_sim_df.values, linkage_type='average', k=3)
 
     return [
         make_table("Document-Word Matrix", doc_word_df, "Document"),
@@ -207,34 +211,28 @@ def update_output(selected_folder):
                   color="Category", hover_data=["Document"], title="Cosine Similarity PCA")),
 
         html.H3("K-Means Clustering (Euclidean)"),
-        project_and_plot(doc_word_matrix, kmeans_eu_labels,
-                         "K-Means Clustering (Euclidean)"),
+        project_and_plot(euclidean_dist_df.values,
+                         kmeans_eu_labels, "K-Means Clustering (Euclidean)"),
 
         html.H3("K-Means Clustering (Cosine)"),
-        project_and_plot(doc_word_matrix, kmeans_cos_labels,
+        project_and_plot(cosine_sim_df.values, kmeans_cos_labels,
                          "K-Means Clustering (Cosine)"),
 
         html.H3("One-Pass Clustering (Euclidean + Single Linkage)"),
-        project_and_plot(doc_word_matrix, onepass_eu_labels,
+        project_and_plot(euclidean_dist_df.values, onepass_eu_labels,
                          "One-Pass Clustering (Euclidean + Single Linkage)"),
 
         html.H3("One-Pass Clustering (Cosine + Complete Linkage)"),
-        project_and_plot(doc_word_matrix, onepass_cos_labels,
+        project_and_plot(cosine_sim_df.values, onepass_cos_labels,
                          "One-Pass Clustering (Cosine + Complete Linkage)"),
 
         html.H3("Agglomerative Clustering (Euclidean + Single Linkage)"),
-        project_and_plot(doc_word_matrix, agglom_eu_labels,
+        project_and_plot(euclidean_dist_df.values, agglom_eu_labels,
                          "Agglomerative Clustering (Euclidean + Single Linkage)"),
 
         html.H3("Agglomerative Clustering (Cosine + Average Linkage)"),
-        project_and_plot(doc_word_matrix, agglom_cos_labels,
-                         "Agglomerative Clustering (Cosine + Average Linkage)"),
-
-        html.H3("PCA Before Clustering (Raw Doc Matrix)"),
-        project_and_plot(reduced_doc_word_matrix, reduced_doc_word_matrix_kmeans_eu_labels,
-                         "K-Means Clustering on PCA (Euclidean)"),
-        project_and_plot(reduced_doc_word_matrix, kmeans_cos_labels,
-                         "K-Means Clustering on PCA (Cosine)")
+        project_and_plot(cosine_sim_df.values, agglom_cos_labels,
+                         "Agglomerative Clustering (Cosine + Average Linkage)")
     ]
 
 
