@@ -13,13 +13,13 @@ pip install numpy pandas scikit-learn plotly dash nltk
 
 
 ## Запуск застосунку
-Запустіть файл app_test.py за допомогою Python 3 (Додаток тестувався на 3.12.4)
+Запустіть файл app.py за допомогою Python 3 (Додаток тестувався на 3.12.4)
 
 після чого в консолі має з'явитися сповіщення:
 ```
 Dash is running on http://127.0.0.1:8050/
 
- * Serving Flask app 'app_test'
+ * Serving Flask app 'app'
  * Debug mode: on
 ```
 
