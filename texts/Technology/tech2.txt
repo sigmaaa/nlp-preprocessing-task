@@ -1,1 +1,1 @@
-the network systems processed data and stored information in hardware
+Network systems process and store data using coded software and hardware tools.
